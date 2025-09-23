@@ -1,35 +1,21 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
 import './App.css'
+import TrangDuDoan from './components/TrangDuDoan'
 
-function App() {
-  const [count, setCount] = useState(0)
-
+export default function App() {
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank" rel="noreferrer">
-          {/* dùng file public qua path tuyệt đối */}
-          <img src="/vite.svg" className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank" rel="noreferrer">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((c) => c + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
+    <div className="min-h-screen bg-gray-50 text-gray-900">
+      <header className="p-6 shadow-sm bg-white">
+        <h1 className="text-2xl font-bold">Theo dõi & Dự đoán bóng đá</h1>
+        <p className="text-sm text-gray-500">Nguồn dữ liệu: Fifadata (demo)</p>
+      </header>
+
+      <main className="max-w-4xl mx-auto p-6">
+        <TrangDuDoan />
+      </main>
+
+      <footer className="p-6 text-center text-xs text-gray-500">
+        *Dự đoán chỉ mang tính tham khảo.
+      </footer>
+    </div>
   )
 }
-
-export default App
