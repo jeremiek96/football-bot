@@ -1,16 +1,18 @@
-// API lấy dữ liệu từ Fifadata (ví dụ World Cup, Euro)
-const BASE_URL = "https://www.fifadata.com/api/v1";
-
 export async function layTranDauTheoNgay(ngayISO: string) {
-  const url = `${BASE_URL}/matches?date=${ngayISO}`;
-  const res = await fetch(url);
-  const data = await res.json();
-  return data.matches.map((m: any) => ({
-    id: m.matchId,
-    ngay: m.dateUtc,
-    doiNha: m.homeTeam?.name,
-    doiKhach: m.awayTeam?.name,
-    giai: m.competition?.name,
-    san: m.venue,
-  }));
+  try {
+    const res = await fetch(`/api/matches?date=${ngayISO}`)
+    const data = await res.json()
+    const matches = Array.isArray(data?.matches) ? data.matches : []
+    return matches.map((m: any) => ({
+      id: m.matchId ?? `${m.homeTeam?.name}-${m.awayTeam?.name}-${m.dateUtc ?? ''}`,
+      ngay: m.dateUtc ?? '',
+      doiNha: m.homeTeam?.name ?? 'Đội nhà',
+      doiKhach: m.awayTeam?.name ?? 'Đội khách',
+      giai: m.competition?.name ?? '',
+      san: m.venue ?? ''
+    }))
+  } catch {
+    // Trả rỗng để UI vẫn render
+    return []
+  }
 }
