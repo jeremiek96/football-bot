@@ -1,149 +1,199 @@
 // src/services/api.ts
-import { getSelectedProvider, getProviderToken } from './providers';
-import type { ProviderId } from './providers';
+// GỌI DỮ LIỆU QUA SERVERLESS PROXY: /api/proxy?provider=...&date=YYYY-MM-DD
+// Chuẩn hoá về 1 shape dùng chung cho UI (FlashScoreList/TrangDuDoan)
 
+import { getSelectedProvider } from './providers'
+import type { ProviderId } from './providers'
 
-// Chuẩn hoá item trận đấu về shape chung UI dùng
-function normalize(matches: any[]): any[] {
-  return matches.map((m: any, i: number) => ({
-    id: m.id ?? m.MatchID ?? m.matchId ?? m.idEvent ?? `m-${i}`,
-    ngay: m.utcDate ?? m.MatchDateTimeUTC ?? m.dateUtc ?? m.DateTimeUTC ?? m.strTimestamp ?? m.date ?? '',
-    doiNha: m.homeTeam?.name ?? m.Team1?.TeamName ?? m.HomeTeam ?? m.home ?? m.strHomeTeam ?? 'Đội nhà',
-    doiKhach: m.awayTeam?.name ?? m.Team2?.TeamName ?? m.AwayTeam ?? m.away ?? m.strAwayTeam ?? 'Đội khách',
-    giai: m.competition?.name ?? m.LeagueName ?? m.competition ?? m.strLeague ?? '',
-    san: m.venue ?? m.Location ?? m.strVenue ?? '',
-  }));
+export type MatchItem = {
+  id: string
+  ngay?: string        // ISO datetime (UTC)
+  doiNha: string
+  doiKhach: string
+  giai?: string
+  san?: string
+  status?: string      // NS / LIVE / HT / FT ...
+  homeScore?: number
+  awayScore?: number
 }
 
-// OpenLigaDB (no key). Ví dụ lấy Bundesliga BL1 theo mùa hiện tại rồi lọc theo ngày.
-async function fetchOpenLigaDB(dateISO: string) {
-  const season = new Date().getFullYear();
-  const league = 'bl1'; // bạn có thể mở rộng UI chọn giải
-  const url = `https://api.openligadb.de/getmatchdata/${league}/${season}`;
-  const res = await fetch(url, { cache: 'no-store' });
-  if (!res.ok) return [];
-  const data = await res.json();
-  const list = (data || []).filter((m: any) => (m.MatchDateTimeUTC || '').slice(0,10) === dateISO);
-  return normalize(list);
+// ------- UTIL -------
+
+function safeNum(x: any): number | undefined {
+  const n = Number(x)
+  return Number.isFinite(n) ? n : undefined
 }
 
-// Scorebat (no key) — chủ yếu highlights, lọc theo ngày
-async function fetchScorebat(dateISO: string) {
-  const res = await fetch('https://www.scorebat.com/video-api/v3/', { cache: 'no-store' });
-  if (!res.ok) return [];
-  const json = await res.json();
-  const list = json?.response || [];
-  const filt = list.filter((x: any) => (x?.date || '').slice(0,10) === dateISO);
-  return normalize(
-    filt.map((v: any) => ({
-      id: v?.title,
-      utcDate: v?.date,
-      homeTeam: { name: v?.title?.split(' - ')?.[0] || 'Home' },
-      awayTeam: { name: v?.title?.split(' - ')?.[1] || 'Away' },
-      competition: { name: v?.competition },
-      venue: '',
-    }))
-  );
+function normTeamName(x: any): string {
+  return String(x ?? '').trim() || 'Đội'
 }
 
-// FIFA Data (demo, no key)
-async function fetchFifa(dateISO: string) {
-  const url = `https://www.fifadata.com/api/v1/matches?date=${dateISO}`;
-  const res = await fetch(url, { headers: { accept: 'application/json' }, cache: 'no-store' });
-  if (!res.ok) return [];
-  const json = await res.json();
-  return Array.isArray(json?.matches) ? normalize(json.matches) : [];
+function normalizeFootballData(json: any): MatchItem[] {
+  const arr = Array.isArray(json?.matches) ? json.matches : []
+  return arr.map((m: any, i: number) => ({
+    id: String(m.id ?? m.matchId ?? i),
+    ngay: m.utcDate ?? m.dateUtc ?? m.utc_date,
+    doiNha: normTeamName(m.homeTeam?.name),
+    doiKhach: normTeamName(m.awayTeam?.name),
+    giai: m.competition?.name,
+    san: m.venue,
+    status: m.status, // SCHEDULED/IN_PLAY/PAUSED/FINISHED...
+    homeScore: safeNum(m.score?.fullTime?.home ?? m.score?.halfTime?.home ?? m.score?.regular?.home ?? m.homeScore),
+    awayScore: safeNum(m.score?.fullTime?.away ?? m.score?.halfTime?.away ?? m.score?.regular?.away ?? m.awayScore),
+  }))
 }
 
-// football-data.org (needs key). Free tier hạn chế; có CORS, thử gọi trực tiếp.
-async function fetchFootballData(dateISO: string) {
-  const token = getProviderToken('football-data');
-  if (!token) return [];
-  const url = `https://api.football-data.org/v4/matches?dateFrom=${dateISO}&dateTo=${dateISO}`;
-  const res = await fetch(url, { headers: { 'X-Auth-Token': token }, cache: 'no-store' });
-  if (!res.ok) return [];
-  const json = await res.json();
-  return normalize(json?.matches || []);
+function normalizeAPIFootball(json: any): MatchItem[] {
+  const arr = Array.isArray(json?.response) ? json.response : []
+  return arr.map((r: any, i: number) => ({
+    id: String(r.fixture?.id ?? i),
+    ngay: r.fixture?.date,
+    doiNha: normTeamName(r.teams?.home?.name),
+    doiKhach: normTeamName(r.teams?.away?.name),
+    giai: r.league?.name,
+    san: r.fixture?.venue?.name,
+    status: r.fixture?.status?.short, // NS, 1H, HT, 2H, ET, FT...
+    homeScore: safeNum(r.goals?.home),
+    awayScore: safeNum(r.goals?.away),
+  }))
 }
 
-// TheSportsDB (needs key) — sự kiện theo ngày
-async function fetchTheSportsDB(dateISO: string) {
-  const key = getProviderToken('thesportsdb');
-  if (!key) return [];
-  const url = `https://www.thesportsdb.com/api/v1/json/${key}/eventsday.php?d=${dateISO}&s=Soccer`;
-  const res = await fetch(url, { cache: 'no-store' });
-  if (!res.ok) return [];
-  const json = await res.json();
-  const events = json?.events || [];
-  return normalize(events.map((e: any) => ({
-    id: e.idEvent,
-    utcDate: e.strTimestamp,
-    homeTeam: { name: e.strHomeTeam },
-    awayTeam: { name: e.strAwayTeam },
-    competition: { name: e.strLeague },
-    venue: e.strVenue,
-  })));
+function normalizeSportMonks(json: any): MatchItem[] {
+  const arr = Array.isArray(json?.data) ? json.data : []
+  return arr.map((r: any, i: number) => {
+    const home =
+      r.participants?.find((p: any) => p?.meta?.location === 'home')?.name ??
+      r.home_name
+    const away =
+      r.participants?.find((p: any) => p?.meta?.location === 'away')?.name ??
+      r.away_name
+    const scoreHome =
+      r.scores?.find?.((s: any) => s.description === 'CURRENT' && s.participant === 'home')?.score ??
+      r.home_score
+    const scoreAway =
+      r.scores?.find?.((s: any) => s.description === 'CURRENT' && s.participant === 'away')?.score ??
+      r.away_score
+
+    return {
+      id: String(r.id ?? i),
+      ngay: r.starting_at?.utc ?? r.starting_at?.date_time ?? r.starting_at,
+      doiNha: normTeamName(home),
+      doiKhach: normTeamName(away),
+      giai: r.league?.name ?? r.competition_name,
+      san: r.venue?.name,
+      status: r.state?.state ?? r.status, // tuỳ payload
+      homeScore: safeNum(scoreHome),
+      awayScore: safeNum(scoreAway),
+    }
+  })
 }
 
-// API-Football qua RapidAPI (needs key). Có nhiều params; ví dụ theo ngày.
-async function fetchAPIFootball(dateISO: string) {
-  const key = getProviderToken('api-football');
-  if (!key) return [];
-  const url = `https://api-football-v1.p.rapidapi.com/v3/fixtures?date=${dateISO}`;
-  const res = await fetch(url, {
-    headers: {
-      'X-RapidAPI-Host': 'api-football-v1.p.rapidapi.com',
-      'X-RapidAPI-Key': key
-    },
-    cache: 'no-store'
-  });
-  if (!res.ok) return [];
-  const json = await res.json();
-  const list = json?.response || [];
-  return normalize(list.map((r: any) => ({
-    id: r.fixture?.id,
-    utcDate: r.fixture?.date,
-    homeTeam: { name: r.teams?.home?.name },
-    awayTeam: { name: r.teams?.away?.name },
-    competition: { name: r.league?.name },
-    venue: r.fixture?.venue?.name
-  })));
+function normalizeTheSportsDB(json: any): MatchItem[] {
+  const arr = Array.isArray(json?.events) ? json.events : []
+  return arr.map((e: any, i: number) => ({
+    id: String(e.idEvent ?? i),
+    ngay: e.strTimestamp ?? e.dateEvent ?? e.dateEventLocal,
+    doiNha: normTeamName(e.strHomeTeam),
+    doiKhach: normTeamName(e.strAwayTeam),
+    giai: e.strLeague,
+    san: e.strVenue,
+    status: e.strStatus ?? e.strStatusShort,
+    homeScore: safeNum(e.intHomeScore ?? e.intHomeGoals),
+    awayScore: safeNum(e.intAwayScore ?? e.intAwayGoals),
+  }))
 }
 
-// SportMonks (needs key)
-async function fetchSportMonks(dateISO: string) {
-  const key = getProviderToken('sportmonks');
-  if (!key) return [];
-  const url = `https://api.sportmonks.com/v3/football/fixtures/date/${dateISO}?api_token=${encodeURIComponent(key)}`;
-  const res = await fetch(url, { cache: 'no-store' });
-  if (!res.ok) return [];
-  const json = await res.json();
-  const list = json?.data || [];
-  return normalize(list.map((r: any) => ({
-    id: r.id,
-    utcDate: r.starting_at ?? r.starting_at?.date_time ?? r.starting_at?.utc,
-    homeTeam: { name: r.participants?.find((p:any)=>p.meta?.location==='home')?.name || r.home_name },
-    awayTeam: { name: r.participants?.find((p:any)=>p.meta?.location==='away')?.name || r.away_name },
-    competition: { name: r.league?.name || r.competition_name },
-    venue: r.venue?.name
-  })));
+function normalizeOpenLigaDB(json: any, dateISO: string): MatchItem[] {
+  const arr = Array.isArray(json) ? json : []
+  const filtered = arr.filter((m: any) =>
+    (m.MatchDateTimeUTC || '').slice(0, 10) === dateISO
+  )
+  return filtered.map((m: any, i: number) => {
+    // Kết quả: tìm fulltime nếu có
+    const res = Array.isArray(m.MatchResults) ? m.MatchResults : []
+    const ft = res.find((x: any) => x.ResultTypeID === 2 /*fulltime*/) || res[res.length - 1] || {}
+    return {
+      id: String(m.MatchID ?? i),
+      ngay: m.MatchDateTimeUTC,
+      doiNha: normTeamName(m.Team1?.TeamName ?? m.Team1?.ShortName),
+      doiKhach: normTeamName(m.Team2?.TeamName ?? m.Team2?.ShortName),
+      giai: m.LeagueName ?? m.LeagueId,
+      san: m.Location?.LocationCity ?? m.Location?.LocationStadium,
+      status: m.MatchIsFinished ? 'FT' : 'SCHEDULED',
+      homeScore: safeNum(ft?.PointsTeam1),
+      awayScore: safeNum(ft?.PointsTeam2),
+    }
+  })
 }
 
-export async function layTranDauTheoNgay(ngayISO: string) {
-  const provider: ProviderId = getSelectedProvider();
+function normalizeScorebat(json: any, dateISO: string): MatchItem[] {
+  const arr = Array.isArray(json?.response) ? json.response : []
+  const filtered = arr.filter((x: any) => (x?.date || '').slice(0, 10) === dateISO)
+  return filtered.map((v: any, i: number) => {
+    const [home, away] = String(v?.title || '').split(' - ')
+    return {
+      id: String(v?.title ?? i),
+      ngay: v?.date,
+      doiNha: normTeamName(home),
+      doiKhach: normTeamName(away),
+      giai: v?.competition,
+      san: '',
+      status: 'SCHEDULED',
+    }
+  })
+}
+
+// ------- FETCH VIA PROXY -------
+
+async function viaProxy(provider: ProviderId, dateISO: string) {
+  const res = await fetch(`/api/proxy?provider=${provider}&date=${dateISO}`, {
+    cache: 'no-store',
+    headers: { accept: 'application/json' }
+  })
+  // Dùng text trước để tránh crash khi body rỗng
+  const text = await res.text()
+  try { return { status: res.status, json: JSON.parse(text) } }
+  catch { return { status: res.status, json: text } }
+}
+
+// ------- PUBLIC API -------
+
+export async function layTranDauTheoNgay(dateISO: string): Promise<MatchItem[]> {
+  const provider = getSelectedProvider()
   try {
+    const { status, json } = await viaProxy(provider, dateISO)
+
+    // Map theo provider → normalize về MatchItem[]
     switch (provider) {
-      case 'openligadb':   return await fetchOpenLigaDB(ngayISO);
-      case 'scorebat':     return await fetchScorebat(ngayISO);
-      case 'fifadata':     return await fetchFifa(ngayISO);
-      case 'football-data':return await fetchFootballData(ngayISO);
-      case 'thesportsdb':  return await fetchTheSportsDB(ngayISO);
-      case 'api-football': return await fetchAPIFootball(ngayISO);
-      case 'sportmonks':   return await fetchSportMonks(ngayISO);
-      default:             return [];
+      case 'football-data':
+        if (status === 200 && json) return normalizeFootballData(json)
+        return []
+      case 'api-football':
+        if (status === 200 && json) return normalizeAPIFootball(json)
+        return []
+      case 'sportmonks':
+        if (status === 200 && json) return normalizeSportMonks(json)
+        return []
+      case 'thesportsdb':
+        if (status === 200 && json) return normalizeTheSportsDB(json)
+        return []
+      case 'openligadb':
+        if (status === 200 && json) return normalizeOpenLigaDB(json, dateISO)
+        return []
+      case 'scorebat':
+        if (status === 200 && json) return normalizeScorebat(json, dateISO)
+        return []
+      case 'fifadata':
+        // Fifadata trả {matches:[...]} tương tự football-data (demo)
+        if (status === 200 && Array.isArray(json?.matches)) {
+          return normalizeFootballData(json)
+        }
+        return []
+      default:
+        return []
     }
   } catch (e) {
-    console.warn('[fetch error]', provider, e);
-    return [];
+    console.warn('[fetch error]', provider, e)
+    return []
   }
 }
