@@ -14,6 +14,7 @@ export type ProviderConfig = {
   needsKey?: boolean;
   notes?: string;
   keyLabel?: string; // gợi ý tên key
+  useProxy?: boolean;
 };
 
 export const PROVIDERS: ProviderConfig[] = [
