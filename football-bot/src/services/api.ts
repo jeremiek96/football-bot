@@ -30,8 +30,8 @@ const noCache = (url: string) => {
   return `${url}${sep}_ts=${Date.now()}`
 }
 
-const asTime = (iso?: string) => (iso ? new Date(iso).getTime() : 0)
-const sortByKickoff = (arr: MatchItem[]) => arr.sort((a, b) => asTime(a.ngay) - asTime(b.ngay))
+//const asTime = (iso?: string) => (iso ? new Date(iso).getTime() : 0)
+//const sortByKickoff = (arr: MatchItem[]) => arr.sort((a, b) => asTime(a.ngay) - asTime(b.ngay))
 
 // ----------------- normalizers theo provider -----------------
 
@@ -160,38 +160,38 @@ async function viaProxy(provider: ProviderId, dateISO: string) {
 
 // ----------------- public API -----------------
 
-export async function layTranDauTheoNgay(dateISO: string): Promise<MatchItem[]> {
+export async function layTranDauTheoNgay(dateISO: string): Promise<{ data: MatchItem[], error?: string }> {
   const provider = getSelectedProvider()
   try {
     const { status, json } = await viaProxy(provider, dateISO)
 
-    // Proxy đã ép 200 cho 304/204, nhưng ta vẫn kiểm tra status phòng edge cases
-    if (status !== 200 || !json) return []
-
-    switch (provider) {
-      case 'football-data':
-        return normalizeFootballData(json)
-      case 'api-football':
-        return normalizeAPIFootball(json)
-      case 'sportmonks':
-        return normalizeSportMonks(json)
-      case 'thesportsdb':
-        return normalizeTheSportsDB(json)
-      case 'openligadb':
-        return normalizeOpenLigaDB(json, dateISO)
-      case 'scorebat':
-        return normalizeScorebat(json, dateISO)
-      case 'fifadata':
-        // Fifadata (demo) trả kiểu {matches: [...]}, tái dùng normalizer football-data
-        if (Array.isArray(json?.matches)) return normalizeFootballData(json)
-        return []
-      default:
-        return []
+    if (status !== 200) {
+      return { data: [], error: `API trả về status ${status}` }
     }
-  } catch (e) {
-    console.warn('[layTranDauTheoNgay][error]', provider, e)
-    return []
+    if (!json) {
+      return { data: [], error: 'Không parse được dữ liệu từ API' }
+    }
+
+    let data: MatchItem[] = []
+    switch (provider) {
+      case 'football-data': data = normalizeFootballData(json); break
+      case 'api-football':  data = normalizeAPIFootball(json); break
+      case 'sportmonks':    data = normalizeSportMonks(json); break
+      case 'thesportsdb':   data = normalizeTheSportsDB(json); break
+      case 'openligadb':    data = normalizeOpenLigaDB(json, dateISO); break
+      case 'scorebat':      data = normalizeScorebat(json, dateISO); break
+      case 'fifadata':      if (Array.isArray(json?.matches)) data = normalizeFootballData(json); break
+    }
+
+    if (!data.length) {
+      return { data: [], error: 'Không có dữ liệu trận đấu cho ngày này' }
+    }
+
+    return { data }
+  } catch (e: any) {
+    return { data: [], error: `Lỗi khi fetch API: ${e?.message || String(e)}` }
   }
 }
+
 
 // (tuỳ dùng) helper khác có thể export thêm ở đây, ví dụ group theo giải, v.v.
