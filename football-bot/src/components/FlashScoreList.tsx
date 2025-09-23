@@ -9,52 +9,34 @@ type MatchItem = {
   doiKhach: string
   giai?: string
   san?: string
-  // có thể bổ sung status/score nếu API trả
   status?: string
   homeScore?: number
   awayScore?: number
 }
 
-function toLocalHHmm(iso?: string) {
+function hhmm(iso?: string) {
   if (!iso) return ""
   const d = new Date(iso)
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
 }
 
-function statusBadge(status?: string, iso?: string) {
-  if (!status || status === "NS" || status === "SCHEDULED") {
-    return (
-      <span className="text-[11px] px-2 py-0.5 rounded bg-gray-100 text-gray-700">
-        {toLocalHHmm(iso)}
-      </span>
-    )
-  }
-  if (/FT|FINISHED|Full/i.test(status)) {
-    return (
-      <span className="text-[11px] px-2 py-0.5 rounded bg-gray-100 text-gray-700">
-        FT
-      </span>
-    )
-  }
-  if (/HT|Half/i.test(status)) {
-    return (
-      <span className="text-[11px] px-2 py-0.5 rounded bg-amber-100 text-amber-700">
-        HT
-      </span>
-    )
-  }
-  if (/LIVE|IN_PLAY|1H|2H|ET/i.test(status)) {
-    return (
-      <span className="text-[11px] px-2 py-0.5 rounded bg-red-100 text-red-700 animate-pulse">
-        LIVE
-      </span>
-    )
-  }
-  return (
-    <span className="text-[11px] px-2 py-0.5 rounded bg-gray-100 text-gray-700">
-      {status}
-    </span>
-  )
+function statusClass(status?: string) {
+  if (!status || /NS|SCHEDULED|TBD/i.test(status)) return "fs-time"
+  if (/FT|FINISHED/i.test(status)) return "fs-time ft"
+  if (/HT|Half/i.test(status)) return "fs-time ht"
+  if (/LIVE|IN_PLAY|1H|2H|ET/i.test(status)) return "fs-time live"
+  return "fs-time"
+}
+
+function asTime(s?: string) {
+  return s ? new Date(s).getTime() : 0
+}
+
+// tô đỏ nếu xs >= 60%, xanh nếu 55–60%
+function probClass(p: number) {
+  if (p >= 0.6) return "badge hot"
+  if (p >= 0.55) return "badge good"
+  return "badge"
 }
 
 function LeagueHeader({
@@ -67,64 +49,64 @@ function LeagueHeader({
   onToggle: () => void
 }) {
   return (
-    <button
-      onClick={onToggle}
-      className="w-full flex items-center justify-between px-3 py-2 bg-white border rounded-xl shadow-sm hover:bg-gray-50"
-    >
-      <div className="flex items-center gap-2">
-        <span className="w-1.5 h-4 rounded bg-blue-600" />
-        <span className="font-semibold text-sm">{name || "Giải khác"}</span>
+    <button onClick={onToggle} className="fs-league">
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span className="dot" />
+        <span className="font-semibold" style={{ fontSize: 14 }}>{name || "Giải khác"}</span>
       </div>
-      <span className="text-xs text-gray-500">{collapsed ? "▼" : "▲"}</span>
+      <span className="fs-muted">{collapsed ? "▼" : "▲"}</span>
     </button>
   )
 }
 
 function MatchRow({ m }: { m: MatchItem }) {
-  // Poisson gợi ý nhanh: 2 tỷ số top + O/U 2.5
-  const tySo = duDoanTySo(1.5, 1.2) // có thể tinh λ từ form sau
-  const ou = duDoanOverUnder(1.5, 1.2, 2.5)
+  // (demo) λ nhà/khách tạm thời, có thể thay bằng dữ liệu thực
+  const tySo = duDoanTySo(1.5, 1.2)           // [{tySo, xacSuat}, ...]
+  const ou = duDoanOverUnder(1.5, 1.2, 2.5)   // { over, under, luaChon, muc }
+
+  const top1 = tySo[0]
+  const top2 = tySo[1]
+  const p1 = top1?.xacSuat ?? 0
+  const p2 = top2?.xacSuat ?? 0
+
+  // Over/Under prob: lấy max để hiển thị badge
+  const pOU = Math.max(ou.over, ou.under)
+  const ouLabel = `${ou.luaChon === "Chọn Over" ? "Over" : "Under"} ${ou.muc} (${(pOU*100).toFixed(0)}%)`
+
   const score =
-    m.homeScore != null && m.awayScore != null
-      ? `${m.homeScore}–${m.awayScore}`
-      : "–"
+    m.homeScore != null && m.awayScore != null ? `${m.homeScore}–${m.awayScore}` : "–"
 
   return (
-    <div className="grid grid-cols-[64px_1fr_auto] items-center gap-3 px-3 py-2 hover:bg-gray-50">
-      <div className="flex items-center gap-2">
-        {statusBadge(m.status, m.ngay)}
+    <div className="fs-row">
+      <div>
+        <span className={statusClass(m.status)}>{/LIVE|IN_PLAY|HT|FT/i.test(m.status||"") ? (m.status?.toUpperCase()) : hhmm(m.ngay)}</span>
       </div>
 
-      <div className="min-w-0">
-        <div className="flex items-center justify-between gap-2">
-          <div className="truncate">{m.doiNha}</div>
-          <div className="font-semibold tabular-nums">{score}</div>
+      <div>
+        <div className="fs-team">
+          <div className="name">{m.doiNha}</div>
+          <div className="fs-score">{score}</div>
         </div>
-        <div className="flex items-center justify-between gap-2 text-gray-700">
-          <div className="truncate">{m.doiKhach}</div>
-          <div className="text-[11px] text-gray-500">
-            {/* tip nhanh kiểu Flashscore mini-badge */}
-            {tySo[0]?.tySo} • {ou.luaChon}
+        <div className="fs-team">
+          <div className="name">{m.doiKhach}</div>
+          <div className="fs-badges">
+            {/* Hai tỷ số top + % */}
+            {top1 && <span className={probClass(p1)}>{top1.tySo} {(p1*100).toFixed(0)}%</span>}
+            {top2 && <span className={probClass(p2)}>{top2.tySo} {(p2*100).toFixed(0)}%</span>}
+            {/* O/U */}
+            <span className={probClass(pOU)}>{ouLabel}</span>
           </div>
         </div>
       </div>
 
-      <div className="hidden sm:flex items-center gap-2 text-[11px] text-gray-500">
-        <span className="px-2 py-0.5 rounded bg-gray-100">{tySo[0]?.tySo}</span>
-        <span className="px-2 py-0.5 rounded bg-gray-100">{tySo[1]?.tySo}</span>
-        <span className="px-2 py-0.5 rounded bg-gray-100">
-          O/U {ou.muc}: {ou.luaChon === "Chọn Over" ? "Over" : "Under"}
-        </span>
+      <div className="fs-muted" style={{ textAlign: "right" }}>
+        {m.san || ""}
       </div>
     </div>
   )
 }
 
-export default function FlashScoreList({
-  dateISO,
-}: {
-  dateISO: string
-}) {
+export default function FlashScoreList({ dateISO }: { dateISO: string }) {
   const [data, setData] = React.useState<MatchItem[]>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
@@ -133,12 +115,10 @@ export default function FlashScoreList({
   React.useEffect(() => {
     let alive = true
     ;(async () => {
-      setLoading(true)
-      setError(null)
+      setLoading(true); setError(null)
       try {
         const raw = await layTranDauTheoNgay(dateISO)
         if (!alive) return
-        // chuẩn hoá tối thiểu
         const arr: MatchItem[] = (raw || []).map((r: any) => ({
           id: r.id,
           ngay: r.ngay,
@@ -150,20 +130,16 @@ export default function FlashScoreList({
           homeScore: r.homeScore,
           awayScore: r.awayScore,
         }))
-
-        // sort theo giờ
-        arr.sort((a, b) => (new Date(a.ngay || 0).getTime() - new Date(b.ngay || 0).getTime()))
-
+        // Sắp xếp theo giờ thi đấu tăng dần
+        arr.sort((a, b) => asTime(a.ngay) - asTime(b.ngay))
         setData(arr)
-      } catch (e: any) {
+      } catch (e) {
         setError("Không tải được dữ liệu.")
       } finally {
         if (alive) setLoading(false)
       }
     })()
-    return () => {
-      alive = false
-    }
+    return () => { alive = false }
   }, [dateISO])
 
   // group theo giải
@@ -177,30 +153,26 @@ export default function FlashScoreList({
     return Array.from(map.entries())
   }, [data])
 
-  if (loading) return <div className="p-6">Đang tải dữ liệu…</div>
-  if (error) return <div className="p-6 text-red-600">{error}</div>
-  if (!data.length) return <div className="p-6">Không có trận cho ngày này.</div>
+  if (loading) return <div style={{ padding: 16 }}>Đang tải dữ liệu…</div>
+  if (error) return <div style={{ padding: 16, color: "#b91c1c" }}>{error}</div>
+  if (!data.length) return <div style={{ padding: 16 }}>Không có trận cho ngày này.</div>
 
   return (
-    <div className="space-y-3">
+    <div className="fs-league-wrap">
       {groups.map(([league, items]) => {
         const isCollapsed = !!collapsed[league]
         return (
-          <div key={league} className="bg-white border rounded-2xl shadow-sm">
-            <div className="p-2">
+          <div key={league} className="fs-card" style={{ marginBottom: 12 }}>
+            <div className="fs-league-header">
               <LeagueHeader
                 name={league}
                 collapsed={isCollapsed}
-                onToggle={() =>
-                  setCollapsed((s) => ({ ...s, [league]: !s[league] }))
-                }
+                onToggle={() => setCollapsed(s => ({ ...s, [league]: !s[league] }))}
               />
             </div>
             {!isCollapsed && (
-              <div className="divide-y">
-                {items.map((m) => (
-                  <MatchRow key={m.id} m={m} />
-                ))}
+              <div>
+                {items.map(m => <MatchRow key={m.id} m={m} />)}
               </div>
             )}
           </div>

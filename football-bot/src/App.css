@@ -1,42 +1,28 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
-}
+/* ===== Flashscore-like styling ===== */
+.fs-card { border: 1px solid #e5e7eb; border-radius: 14px; background:#fff; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+.fs-league { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 12px; border-radius:12px; background:#fff; border:1px solid #e5e7eb; }
+.fs-league .dot { width:6px; height:18px; border-radius:4px; background:#2563eb; margin-right:8px; }
+.fs-row { display:grid; grid-template-columns:80px 1fr auto; align-items:center; gap:12px; padding:10px 12px; }
+.fs-row + .fs-row { border-top:1px solid #f1f5f9; }
+.fs-time { font-size:12px; padding:2px 8px; border-radius:999px; background:#f3f4f6; color:#374151; }
+.fs-time.live { background:#fee2e2; color:#b91c1c; animation: pulse 1.5s infinite ease-in-out; }
+.fs-time.ht { background:#fde68a; color:#92400e; }
+.fs-time.ft { background:#e5e7eb; color:#374151; }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
-}
+.fs-team { display:flex; justify-content:space-between; gap:10px; }
+.fs-team .name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fs-score { font-variant-numeric: tabular-nums; font-weight:600; }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
+.fs-badges { display:flex; gap:6px; align-items:center; font-size:11px; color:#6b7280; }
+.badge { padding:2px 8px; border-radius:999px; background:#f3f4f6; color:#374151; border:1px solid #e5e7eb; }
+.badge.hot { background:#fee2e2; color:#991b1b; border-color:#fecaca; font-weight:600; }
+.badge.good { background:#dcfce7; color:#166534; border-color:#bbf7d0; font-weight:600; }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
-}
+.fs-league-wrap { margin-bottom:12px; }
+.fs-league-header { padding:8px; }
+.fs-muted { color:#64748b; font-size:12px; }
 
-.card {
-  padding: 2em;
-}
-
-.read-the-docs {
-  color: #888;
+@keyframes pulse {
+  0%, 100% { opacity: 1 }
+  50% { opacity: .5 }
 }
