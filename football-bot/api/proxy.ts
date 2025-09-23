@@ -1,20 +1,20 @@
 // api/proxy.ts
 export default async function handler(req: any, res: any) {
   try {
-    // Tắt cache để tránh 304
+    // Tắt cache ở mọi tầng CDN/trình duyệt
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
     res.setHeader('Pragma', 'no-cache')
     res.setHeader('Vercel-CDN-Cache-Control', 'no-store')
+    res.setHeader('CDN-Cache-Control', 'no-store')
+    res.setHeader('Surrogate-Control', 'no-store')
 
     const provider = String(req.query.provider || '')
-    const date = String(req.query.date || '') // dạng YYYY-MM-DD
-
+    const date = String(req.query.date || '')
     if (!provider) return res.status(400).json({ error: 'missing provider' })
 
+    // Build url + headers theo provider (giữ giống bản của bạn)
     let url = ''
-    const headers: Record<string, string> = { accept: 'application/json' }
-
-    // Map từng provider sang URL + header tương ứng
+    const headers: Record<string,string> = { accept: 'application/json' }
     if (provider === 'football-data') {
       const token = process.env.FD_TOKEN || ''
       if (!token) return res.status(500).json({ error: 'FD_TOKEN missing' })
@@ -44,17 +44,29 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: 'unknown provider' })
     }
 
-    const upstream = await fetch(url, { headers, cache: 'no-store' })
+    // Tránh mọi conditional request → upstream sẽ không trả 304
+    const upstream = await fetch(url, {
+      headers,
+      cache: 'no-store' as RequestCache,
+      // @ts-ignore (Node fetch 20+)
+      next: { revalidate: 0 }
+    })
 
-    const text = await upstream.text() // tránh crash khi body trống
     const status = upstream.status
 
-    // Trả lại đúng status, cố gắng parse JSON nếu có
+    // Nếu upstream (vẫn) trả 304/204 → ta CHỦ ĐỘNG trả 200 + JSON rỗng
+    if (status === 304 || status === 204) {
+      return res.status(200).json({ matches: [], note: 'normalized from 304/204' })
+    }
+
+    const txt = await upstream.text()
+
+    // Thử parse JSON; nếu lỗi thì trả text nhưng vẫn 200 để client không crash
     try {
-      const json = JSON.parse(text)
-      return res.status(status).json(json)
+      const json = JSON.parse(txt)
+      return res.status(200).json(json)
     } catch {
-      return res.status(status).send(text)
+      return res.status(200).send(txt || '')
     }
   } catch (e: any) {
     return res.status(200).json({ matches: [], error: e?.message || String(e) })
