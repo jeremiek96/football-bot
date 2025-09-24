@@ -52,6 +52,7 @@ export default async function handler(req: any, res: any) {
     })
 
     const status = upstream.status
+    res.setHeader('x-upstream-status', String(status)) 
     // nếu upstream trả 304/204 → ép 200 + JSON rỗng để client không crash
     if (status === 304 || status === 204) {
       return res.status(200).json({ matches: [], note: 'normalized from 304/204', _src: url })
@@ -71,6 +72,7 @@ export default async function handler(req: any, res: any) {
     // luôn trả 200 để tránh 304 phía sau
     return res.status(200).send(json ?? (text || ''))
   } catch (e: any) {
+    res.setHeader('x-upstream-status', '0')       
     return res.status(200).json({ matches: [], error: e?.message || String(e) })
   }
 }
