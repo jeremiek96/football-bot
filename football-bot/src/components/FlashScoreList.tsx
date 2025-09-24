@@ -19,11 +19,12 @@ const FlashScoreList: React.FC<Props> = ({ dateISO }) => {
 
       if (result.code !== 'OK') {
         const friendly =
-          result.code === 'NETWORK_ERROR' ? 'Không kết nối được tới API. Kiểm tra mạng/ENV/Proxy.'
-        : result.code === 'AUTH_ERROR'    ? 'API từ chối truy cập (key sai/thiếu).'
-        : result.code === 'RATE_LIMITED'  ? 'Bị giới hạn tần suất. Vui lòng thử lại sau.'
-        : result.code === 'NO_DATA'       ? 'Kết nối OK nhưng không có trận cho ngày này.'
-        : result.code === 'HTTP_ERROR'    ? `API lỗi (HTTP ${result.upstreamStatus ?? ''}).`
+          result.code === 'CONFIG_MISSING' ? 'Server thiếu ENV (API key). Vào Vercel → Settings → Environment Variables để thêm, rồi redeploy.'
+        : result.code === 'NETWORK_ERROR'   ? 'Không kết nối được tới API. Kiểm tra mạng/ENV/Proxy.'
+        : result.code === 'AUTH_ERROR'      ? 'API từ chối truy cập (key sai/thiếu).'
+        : result.code === 'RATE_LIMITED'    ? 'Bị giới hạn tần suất. Vui lòng thử lại sau.'
+        : result.code === 'NO_DATA'         ? 'Kết nối OK nhưng không có trận cho ngày này.'
+        : result.code === 'HTTP_ERROR'      ? `API lỗi (HTTP ${result.upstreamStatus ?? ''}).`
         : 'Có lỗi xảy ra.'
         setMsg({ code: result.code, text: result.message || friendly })
         setData([])

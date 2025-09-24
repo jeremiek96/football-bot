@@ -1,18 +1,16 @@
 // src/services/api.ts
-// Gọi tất cả nguồn qua /api/proxy để tránh CORS/304, và phân loại lỗi rõ ràng.
-
 import { getSelectedProvider } from './providers'
 import type { ProviderId } from './providers'
 
 // ===== Types =====
 export type MatchItem = {
   id: string
-  ngay?: string        // ISO datetime
+  ngay?: string
   doiNha: string
   doiKhach: string
   giai?: string
   san?: string
-  status?: string      // NS/LIVE/HT/FT...
+  status?: string
   homeScore?: number
   awayScore?: number
 }
@@ -25,6 +23,7 @@ export type ApiCode =
   | 'AUTH_ERROR'
   | 'RATE_LIMITED'
   | 'PARSE_ERROR'
+  | 'CONFIG_MISSING'
   | 'UNKNOWN';
 
 export type ApiResult = {
@@ -36,15 +35,11 @@ export type ApiResult = {
 }
 
 // ===== Utils =====
-const toNum = (x: any) => {
-  const n = Number(x); return Number.isFinite(n) ? n : undefined
-}
+const toNum = (x: any) => { const n = Number(x); return Number.isFinite(n) ? n : undefined }
 const nameOf = (x: any, fb = 'Đội') => (String(x ?? '').trim() || fb)
 const noCache = (url: string) => `${url}${url.includes('?') ? '&' : '?'}_ts=${Date.now()}`
 
-// ===== Normalizers theo provider =====
-
-// football-data.org (& fifadata-like: {matches:[]})
+// ===== Normalizers =====
 function normalizeFootballData(json: any): MatchItem[] {
   const arr = Array.isArray(json?.matches) ? json.matches : []
   return arr.map((m: any, i: number) => ({
@@ -60,7 +55,6 @@ function normalizeFootballData(json: any): MatchItem[] {
   }))
 }
 
-// API-Football (RapidAPI)
 function normalizeAPIFootball(json: any): MatchItem[] {
   const arr = Array.isArray(json?.response) ? json.response : []
   return arr.map((r: any, i: number) => ({
@@ -70,13 +64,12 @@ function normalizeAPIFootball(json: any): MatchItem[] {
     doiKhach: nameOf(r.teams?.away?.name),
     giai: r.league?.name,
     san: r.fixture?.venue?.name,
-    status: r.fixture?.status?.short, // NS, 1H, HT, 2H, ET, FT...
+    status: r.fixture?.status?.short,
     homeScore: toNum(r.goals?.home),
     awayScore: toNum(r.goals?.away),
   }))
 }
 
-// SportMonks
 function normalizeSportMonks(json: any): MatchItem[] {
   const arr = Array.isArray(json?.data) ? json.data : []
   return arr.map((r: any, i: number) => {
@@ -101,7 +94,6 @@ function normalizeSportMonks(json: any): MatchItem[] {
   })
 }
 
-// TheSportsDB
 function normalizeTheSportsDB(json: any): MatchItem[] {
   const arr = Array.isArray(json?.events) ? json.events : []
   return arr.map((e: any, i: number) => ({
@@ -117,7 +109,6 @@ function normalizeTheSportsDB(json: any): MatchItem[] {
   }))
 }
 
-// OpenLigaDB (lọc theo date ISO UTC)
 function normalizeOpenLigaDB(json: any, dateISO: string): MatchItem[] {
   const arr = Array.isArray(json) ? json : []
   const filtered = arr.filter((m: any) => {
@@ -144,7 +135,6 @@ function normalizeOpenLigaDB(json: any, dateISO: string): MatchItem[] {
   })
 }
 
-// Scorebat (video API) → map tạm thành “trận” theo ngày
 function normalizeScorebat(json: any, dateISO: string): MatchItem[] {
   const arr = Array.isArray(json?.response) ? json.response : []
   const filtered = arr.filter((x: any) => (x?.date || '').slice(0, 10) === dateISO)
@@ -178,7 +168,8 @@ async function viaProxy(provider: ProviderId, dateISO: string) {
 }
 
 function classify(upstream: number, json: any): { code: ApiCode; message?: string } {
-  if (upstream === 0) return { code: 'NETWORK_ERROR', message: 'Không kết nối được tới API (mạng/host).' }
+  if (upstream === -1) return { code: 'CONFIG_MISSING', message: 'Thiếu ENV trên server (API key chưa khai báo hoặc chưa redeploy).' }
+  if (upstream === 0)  return { code: 'NETWORK_ERROR', message: 'Không kết nối được tới API (mạng/host).' }
   if (upstream === 401 || upstream === 403) return { code: 'AUTH_ERROR', message: 'API từ chối truy cập (key sai/thiếu).' }
   if (upstream === 429) return { code: 'RATE_LIMITED', message: 'API giới hạn tần suất (429). Thử lại sau.' }
   if (upstream >= 500) return { code: 'HTTP_ERROR', message: `API lỗi (HTTP ${upstream}).` }
